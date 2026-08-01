@@ -5,24 +5,33 @@ local Workspace = game:GetService("Workspace")
 local island = Workspace:WaitForChild("HopeSkinIsland")
 local trafficFolder = island:WaitForChild("BusTraffic")
 
--- Remove the earlier lightweight block passengers.
 local oldFolder = island:FindFirstChild("StationPassengers")
 if oldFolder then
 	oldFolder:Destroy()
+end
+local oldR15Folder = island:FindFirstChild("StationPassengersR15")
+if oldR15Folder then
+	oldR15Folder:Destroy()
 end
 
 local passengerFolder = Instance.new("Folder")
 passengerFolder.Name = "StationPassengersR15"
 passengerFolder.Parent = island
 
-local waitingPositions = {
-	Vector3.new(-258, 1, 476),
-	Vector3.new(-251, 1, 476),
-	Vector3.new(-244, 1, 476),
-	Vector3.new(-237, 1, 476),
-	Vector3.new(-230, 1, 476),
-	Vector3.new(-223, 1, 476),
+-- Passengers now wait and wander inside the station building, behind the bays.
+local insidePositions = {
+	Vector3.new(-276, 1, 548),
+	Vector3.new(-262, 1, 552),
+	Vector3.new(-248, 1, 546),
+	Vector3.new(-234, 1, 552),
+	Vector3.new(-220, 1, 547),
+	Vector3.new(-206, 1, 551),
 }
+
+-- Route through the station doorway and onto the stand platform.
+local doorwayPosition = Vector3.new(-230, 1, 536)
+local platformPosition = Vector3.new(-230, 1, 524)
+local standPosition = Vector3.new(-230, 1, 515)
 
 local skinColours = {
 	Color3.fromRGB(255, 219, 172),
@@ -124,18 +133,18 @@ local function createPassenger(index, position)
 end
 
 local passengers = {}
-for index, position in ipairs(waitingPositions) do
+local passengerBusy = {}
+for index, position in ipairs(insidePositions) do
 	local passenger = createPassenger(index, position)
 	if passenger then
 		table.insert(passengers, passenger)
+		passengerBusy[passenger] = false
 	end
 end
 
 local function setVisible(model, visible)
 	for _, object in ipairs(model:GetDescendants()) do
-		if object:IsA("BasePart") then
-			object.Transparency = visible and 0 or 1
-		elseif object:IsA("Decal") then
+		if object:IsA("BasePart") or object:IsA("Decal") then
 			object.Transparency = visible and 0 or 1
 		end
 	end
@@ -163,10 +172,36 @@ local function walkModel(model, destination, duration)
 	end
 end
 
+local function walkPath(model, points, secondsPerLeg)
+	for _, point in ipairs(points) do
+		if not model.Parent then
+			return
+		end
+		walkModel(model, point, secondsPerLeg)
+	end
+end
+
+-- Gentle ambient movement within the station concourse.
+for index, passenger in ipairs(passengers) do
+	task.spawn(function()
+		while passenger.Parent do
+			task.wait(3 + index * 0.7)
+			if not passengerBusy[passenger] then
+				passengerBusy[passenger] = true
+				local home = insidePositions[index]
+				local wander = home + Vector3.new(((index % 3) - 1) * 5, 0, (index % 2 == 0 and 4 or -4))
+				walkModel(passenger, wander, 1.8)
+				task.wait(1)
+				walkModel(passenger, home, 1.8)
+				passengerBusy[passenger] = false
+			end
+		end
+	end)
+end
+
 local exchangeBusy = false
 local lastBusNearStand = false
 local cycleIndex = 1
-local standPosition = Vector3.new(-230, 1, 515)
 
 local function findBusAtStand()
 	for _, bus in ipairs(trafficFolder:GetChildren()) do
@@ -188,34 +223,48 @@ local function exchangePassengers(bus)
 
 	local busPosition = bus:GetPivot().Position
 	local doorPosition = Vector3.new(busPosition.X - 5, 1, busPosition.Z - 10)
-	local alightArea = Vector3.new(-265, 1, 475)
 
-	-- Two proper R15 passengers alight first.
+	-- Two passengers alight, walk through the doorway and into the building.
 	for offset = 1, 2 do
 		local passenger = passengers[((cycleIndex + offset + 1) - 1) % #passengers + 1]
+		passengerBusy[passenger] = true
 		setVisible(passenger, false)
-		moveModelToGround(passenger, doorPosition + Vector3.new(offset * 1.8, 0, 0), Vector3.new(-1, 0, 0))
+		moveModelToGround(passenger, doorPosition + Vector3.new(offset * 1.5, 0, 0), Vector3.new(0, 0, 1))
 		setVisible(passenger, true)
-		task.spawn(walkModel, passenger, alightArea + Vector3.new(offset * 5, 0, 0), 2.4)
-	end
-
-	task.wait(2.5)
-
-	-- Two waiting passengers walk to the door and board.
-	for offset = 0, 1 do
-		local passenger = passengers[(cycleIndex + offset - 1) % #passengers + 1]
 		task.spawn(function()
-			walkModel(passenger, doorPosition + Vector3.new(offset * 1.6, 0, 0), 2.4)
-			setVisible(passenger, false)
+			walkPath(passenger, {
+				platformPosition + Vector3.new(offset * 2, 0, 0),
+				doorwayPosition + Vector3.new(offset * 2, 0, 0),
+				insidePositions[((cycleIndex + offset + 1) - 1) % #insidePositions + 1],
+			}, 1.4)
+			passengerBusy[passenger] = false
 		end)
 	end
 
-	task.wait(2.7)
+	task.wait(2.2)
+
+	-- Two waiting passengers leave the building, cross the platform and board.
+	for offset = 0, 1 do
+		local passenger = passengers[(cycleIndex + offset - 1) % #passengers + 1]
+		passengerBusy[passenger] = true
+		task.spawn(function()
+			walkPath(passenger, {
+				doorwayPosition + Vector3.new(offset * 2, 0, 0),
+				platformPosition + Vector3.new(offset * 2, 0, 0),
+				doorPosition + Vector3.new(offset * 1.5, 0, 0),
+			}, 1.35)
+			setVisible(passenger, false)
+			passengerBusy[passenger] = false
+		end)
+	end
+
+	task.wait(4.3)
 	cycleIndex = cycleIndex % #passengers + 1
 
+	-- Prepare hidden boarded passengers back inside for the next cycle.
 	for index, passenger in ipairs(passengers) do
-		if passenger.Parent then
-			moveModelToGround(passenger, waitingPositions[index], Vector3.new(0, 0, -1))
+		if passenger.Parent and not passengerBusy[passenger] then
+			moveModelToGround(passenger, insidePositions[index], Vector3.new(0, 0, -1))
 			setVisible(passenger, true)
 		end
 	end
@@ -232,4 +281,4 @@ RunService.Heartbeat:Connect(function()
 	lastBusNearStand = nearStand
 end)
 
-print("Full R15 station passengers loaded")
+print("R15 passengers now wait inside the station and walk to the bus door")
