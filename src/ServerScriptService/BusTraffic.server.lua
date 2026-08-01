@@ -17,21 +17,51 @@ local BUS_COUNT = 6
 local SPEED = 26
 local ROAD_SURFACE_Y = 1
 local STOP_TIME = 3
+local BUS_FACING_OFFSET = math.rad(90)
 
--- Clockwise loop. The top section passes through the bus station from west to east.
+-- Long town route using the north, central and south streets plus all three
+-- north/south roads. It enters the bus station from the west and leaves east.
 local waypoints = {
-	Vector3.new(-360, 0, 340),
+	-- Bus station, west to east.
 	Vector3.new(-360, 0, 500),
-	Vector3.new(-310, 0, 500),
+	Vector3.new(-300, 0, 500),
 	Vector3.new(-210, 0, 500),
-	Vector3.new(-95, 0, 500),
+	Vector3.new(-110, 0, 500),
 	Vector3.new(0, 0, 500),
+
+	-- HopeSkin Avenue south to South Street.
 	Vector3.new(0, 0, 340),
-	Vector3.new(-180, 0, 340),
+
+	-- South Street east, then the full East Road north.
+	Vector3.new(360, 0, 340),
+	Vector3.new(360, 0, 0),
+	Vector3.new(360, 0, -340),
+
+	-- North Street across the whole town.
+	Vector3.new(0, 0, -340),
+	Vector3.new(-360, 0, -340),
+
+	-- West Road south to Central Boulevard.
+	Vector3.new(-360, 0, 0),
+
+	-- Central Boulevard across the whole town and back to HopeSkin Avenue.
+	Vector3.new(0, 0, 0),
+	Vector3.new(360, 0, 0),
+	Vector3.new(0, 0, 0),
+
+	-- HopeSkin Avenue north and then south to cover its full length.
+	Vector3.new(0, 0, -340),
+	Vector3.new(0, 0, 0),
+	Vector3.new(0, 0, 340),
+
+	-- South Street across the whole town.
 	Vector3.new(-360, 0, 340),
+
+	-- West Road back to the station entrance.
+	Vector3.new(-360, 0, 500),
 }
 
-local stopWaypointIndex = 4
+local stopWaypointIndex = 3
 
 local function cleanBus(bus)
 	for _, object in ipairs(bus:GetDescendants()) do
@@ -48,8 +78,17 @@ local function cleanBus(bus)
 end
 
 local function placeOnRoad(bus, position, lookAt)
-	local facing = CFrame.lookAt(position, lookAt)
+	local direction = lookAt - position
+	if direction.Magnitude < 0.01 then
+		direction = Vector3.new(0, 0, -1)
+	end
+
+	-- This imported bus is modelled with its front along its local X axis,
+	-- so rotate it 90 degrees after looking towards the next waypoint.
+	local facing = CFrame.lookAt(position, position + direction.Unit)
+		* CFrame.Angles(0, BUS_FACING_OFFSET, 0)
 	bus:PivotTo(facing)
+
 	local boxCFrame, boxSize = bus:GetBoundingBox()
 	local bottomY = boxCFrame.Position.Y - boxSize.Y / 2
 	bus:PivotTo(CFrame.new(0, ROAD_SURFACE_Y - bottomY, 0) * bus:GetPivot())
@@ -80,7 +119,7 @@ local function routePosition(distance)
 		end
 	end
 	local finalSegment = segments[#segments]
-	return finalSegment.endPoint, finalSegment.endPoint + Vector3.new(0, 0, -1), #segments
+	return finalSegment.endPoint, waypoints[1], #segments
 end
 
 local buses = {}
@@ -123,4 +162,4 @@ RunService.Heartbeat:Connect(function(deltaTime)
 	end
 end)
 
-print("Six Enviro 400 buses loaded and routed through HopeSkin bus station")
+print("Six correctly oriented Enviro 400 buses routed across HopeSkin Avenue")
