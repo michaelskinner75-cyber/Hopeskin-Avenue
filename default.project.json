@@ -8,6 +8,9 @@
     "ServerStorage": {
       "BusStation": {
         "$path": "BusStationClean.rbxmx"
+      },
+      "Enviro400": {
+        "$path": "Enviro400Clean.rbxmx"
       }
     },
     "ServerScriptService": {
