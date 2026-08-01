@@ -34,12 +34,47 @@ local function makePart(parent, name, size, position, colour, material)
 	return object
 end
 
--- Connect the station directly to South Street so buses can enter and leave.
-local accessX = site.Position.X
+local station = template:Clone()
+station.Name = "BusStation"
+station.Parent = island
+
+for _, object in ipairs(station:GetDescendants()) do
+	if object:IsA("Script") or object:IsA("LocalScript") or object:IsA("ModuleScript") then
+		object:Destroy()
+	elseif object:IsA("BasePart") then
+		object.Anchored = true
+	end
+end
+
+-- Centre the imported station over its reserved area first.
+local boxCFrame = station:GetBoundingBox()
+local horizontalMove = Vector3.new(
+	site.Position.X - boxCFrame.Position.X,
+	0,
+	site.Position.Z - boxCFrame.Position.Z
+)
+station:PivotTo(CFrame.new(horizontalMove) * station:GetPivot())
+
+-- The model has hidden geometry below the usable roadway, so its bounding box
+-- cannot be used for height. The large part named Base is the station roadway.
+-- Align the TOP of that exact part with the top of the town roads (Y = 1).
+local stationBase = station:FindFirstChild("Base", true)
+if not stationBase or not stationBase:IsA("BasePart") then
+	error("Bus station model is missing its roadway part named Base")
+end
+
+local roadSurfaceY = 1
+local baseTopY = stationBase.Position.Y + stationBase.Size.Y / 2
+local verticalMove = Vector3.new(0, roadSurfaceY - baseTopY, 0)
+station:PivotTo(CFrame.new(verticalMove) * station:GetPivot())
+
+-- Connect South Street to the actual front edge of the imported station.
+local finalBoxCFrame, finalBoxSize = station:GetBoundingBox()
+local stationFrontZ = finalBoxCFrame.Position.Z - finalBoxSize.Z / 2
 local southStreetZ = 340
-local stationEntranceZ = site.Position.Z - site.Size.Z / 2
-local accessLength = stationEntranceZ - southStreetZ
+local accessLength = math.max(8, stationFrontZ - southStreetZ)
 local accessCentreZ = southStreetZ + accessLength / 2
+local accessX = finalBoxCFrame.Position.X
 
 makePart(
 	roads,
@@ -68,31 +103,7 @@ makePart(
 	Enum.Material.Concrete
 )
 
-local station = template:Clone()
-station.Name = "BusStation"
-station.Parent = island
-
-for _, object in ipairs(station:GetDescendants()) do
-	if object:IsA("Script") or object:IsA("LocalScript") or object:IsA("ModuleScript") then
-		object:Destroy()
-	elseif object:IsA("BasePart") then
-		object.Anchored = true
-	end
-end
-
--- The imported model contains geometry below its visible floor. Lowering the
--- bounding-box bottom by 3.5 studs puts the usable station roads at street level.
-local boxCFrame, boxSize = station:GetBoundingBox()
-local currentBottom = boxCFrame.Position.Y - boxSize.Y / 2
-local desiredBottom = -2.7
-local movement = Vector3.new(
-	site.Position.X - boxCFrame.Position.X,
-	desiredBottom - currentBottom,
-	site.Position.Z - boxCFrame.Position.Z
-)
-station:PivotTo(CFrame.new(movement) * station:GetPivot())
-
 site.Transparency = 1
 site.CanCollide = false
 
-print("HopeSkin Avenue bus station grounded with vehicle access")
+print("HopeSkin Avenue bus station aligned by its true road surface")
